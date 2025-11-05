@@ -17,6 +17,43 @@ from data_processor import DebriefDataProcessor
 from visualizer import DebriefVisualizer
 from report_exporter import ReportExporter
 
+# Password protection
+def check_password():
+    """Returns True if the user has the correct password."""
+    
+    def password_entered():
+        """Checks whether a password entered by the user is correct."""
+        if st.session_state["password"] == "CC0TeamTacoTruck_2@25!":  # ⚠️ CHANGE THIS PASSWORD!
+            st.session_state["password_correct"] = True
+            del st.session_state["password"]
+        else:
+            st.session_state["password_correct"] = False
+
+    if "password_correct" not in st.session_state:
+        st.text_input(
+            "Password", 
+            type="password", 
+            on_change=password_entered, 
+            key="password"
+        )
+        st.write("*Contact Romina Labanca (romina.labanca@betterup.co) for access*")
+        return False
+    elif not st.session_state["password_correct"]:
+        st.text_input(
+            "Password", 
+            type="password", 
+            on_change=password_entered, 
+            key="password"
+        )
+        st.error("😕 Password incorrect")
+        return False
+    else:
+        return True
+
+# Stop here if password is incorrect
+if not check_password():
+    st.stop()
+    
 # Page configuration
 st.set_page_config(
     page_title="BetterUp Partner Debrief Intelligence",
