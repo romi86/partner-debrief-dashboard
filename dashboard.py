@@ -1,9 +1,7 @@
 """
 Partner Debrief Intelligence Dashboard
-BetterUp Executive Suite - Coach Intelligence Platform
-
-A comprehensive dashboard for analyzing coach feedback and partner insights
-from Partner Debrief sessions.
+A sophisticated analytics platform for transforming coach feedback into strategic partner intelligence.
+Created by Romina Labanca, Coach Community Associate | BetterUp
 """
 
 import streamlit as st
@@ -12,116 +10,231 @@ from datetime import datetime
 import sys
 import os
 
+# Import Google Sheets libraries
+import gspread
+from oauth2client.service_account import ServiceAccountCredentials
+
 # Import custom modules
 from data_processor import DebriefDataProcessor
 from visualizer import DebriefVisualizer
 from report_exporter import ReportExporter
 
-# Password protection
-def check_password():
-    """Returns True if the user has the correct password."""
-    
-    def password_entered():
-        """Checks whether a password entered by the user is correct."""
-        if st.session_state["password"] == "CC0TeamTacoTruck_2@25!":  # ⚠️ CHANGE THIS PASSWORD!
-            st.session_state["password_correct"] = True
-            del st.session_state["password"]
-        else:
-            st.session_state["password_correct"] = False
-
-    if "password_correct" not in st.session_state:
-        st.text_input(
-            "Password", 
-            type="password", 
-            on_change=password_entered, 
-            key="password"
-        )
-        st.write("*Contact Romina Labanca (romina.labanca@betterup.co) for access*")
-        return False
-    elif not st.session_state["password_correct"]:
-        st.text_input(
-            "Password", 
-            type="password", 
-            on_change=password_entered, 
-            key="password"
-        )
-        st.error("😕 Password incorrect")
-        return False
-    else:
-        return True
-
-# Stop here if password is incorrect
-if not check_password():
-    st.stop()
-    
 # Page configuration
 st.set_page_config(
     page_title="BetterUp Partner Debrief Intelligence",
-    page_icon="📊",
+    page_icon="🎯",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# Custom CSS for BetterUp branding
+# Custom CSS with Rubine Color Theme
 st.markdown("""
     <style>
+    /* Main color scheme - Rubine */
+    :root {
+        --rubine: #CE0058;
+        --rubine-light: #E91E7A;
+        --rubine-dark: #A3004A;
+        --accent-orange: #FF6B35;
+    }
+    
     .main-header {
         font-size: 2.5rem;
         font-weight: 700;
-        color: #2C3E50;
+        background: linear-gradient(135deg, #CE0058 0%, #FF6B35 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
         margin-bottom: 0.5rem;
     }
+    
     .sub-header {
-        font-size: 1.2rem;
-        color: #4A90E2;
-        margin-bottom: 2rem;
-        font-weight: 500;
+        font-size: 1.1rem;
+        color: #64748B;
+        margin-bottom: 1rem;
     }
-    .metric-card {
-        background: linear-gradient(135deg, #4A90E2 0%, #7B68EE 100%);
-        padding: 1.5rem;
-        border-radius: 10px;
-        color: white;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-    }
-    .metric-value {
-        font-size: 2.5rem;
-        font-weight: 700;
-        margin: 0;
-    }
-    .metric-label {
+    
+    .creator-credit {
         font-size: 0.9rem;
-        opacity: 0.9;
-        margin-top: 0.5rem;
-    }
-    .insight-box {
-        background-color: #F8F9FA;
-        padding: 1rem;
-        border-left: 4px solid #4A90E2;
-        border-radius: 4px;
-        margin: 1rem 0;
-    }
-    .stTabs [data-baseweb="tab-list"] {
-        gap: 2rem;
-    }
-    .stTabs [data-baseweb="tab"] {
-        font-size: 1rem;
+        color: #CE0058;
         font-weight: 600;
+        margin-bottom: 2rem;
+    }
+    
+    /* Metric cards with Rubine gradient */
+    .metric-card {
+        background: linear-gradient(135deg, #CE0058 0%, #E91E7A 50%, #FF6B35 100%);
+        padding: 1.5rem;
+        border-radius: 0.75rem;
+        color: white;
+        margin: 0.5rem 0;
+        box-shadow: 0 4px 6px rgba(206, 0, 88, 0.2);
+    }
+    
+    /* Insight cards with Rubine accent */
+    .insight-card {
+        background: #FFF5F9;
+        border-left: 4px solid #CE0058;
+        padding: 1rem;
+        margin: 1rem 0;
+        border-radius: 0.25rem;
+        box-shadow: 0 2px 4px rgba(206, 0, 88, 0.1);
+    }
+    
+    /* Buttons */
+    .stButton>button {
+        background: linear-gradient(135deg, #CE0058 0%, #E91E7A 100%);
+        color: white;
+        border: none;
+        border-radius: 0.5rem;
+        padding: 0.5rem 2rem;
+        font-weight: 600;
+        transition: all 0.3s ease;
+    }
+    
+    .stButton>button:hover {
+        background: linear-gradient(135deg, #A3004A 0%, #CE0058 100%);
+        box-shadow: 0 4px 12px rgba(206, 0, 88, 0.3);
+        transform: translateY(-2px);
+    }
+    
+    /* Sidebar styling */
+    .css-1d391kg, [data-testid="stSidebar"] {
+        background: linear-gradient(180deg, #FFF5F9 0%, #FFFFFF 100%);
+    }
+    
+    /* Radio buttons and selectbox with Rubine */
+    .stRadio > label, .stSelectbox > label {
+        color: #CE0058;
+        font-weight: 600;
+    }
+    
+    /* Metrics with Rubine accent */
+    [data-testid="stMetricValue"] {
+        color: #CE0058;
+    }
+    
+    /* Headers with Rubine */
+    h1, h2, h3 {
+        color: #1E3A8A;
+    }
+    
+    h2::before, h3::before {
+        content: "";
+        display: inline-block;
+        width: 4px;
+        height: 1em;
+        background: linear-gradient(180deg, #CE0058 0%, #FF6B35 100%);
+        margin-right: 0.5rem;
+        vertical-align: middle;
+    }
+    
+    /* Download button special styling */
+    .stDownloadButton>button {
+        background: linear-gradient(135deg, #CE0058 0%, #FF6B35 100%);
+        color: white;
+        border: none;
+        border-radius: 0.5rem;
+        padding: 0.75rem 2rem;
+        font-weight: 600;
+        box-shadow: 0 4px 6px rgba(206, 0, 88, 0.2);
+    }
+    
+    /* Info and warning boxes */
+    .stAlert {
+        border-left: 4px solid #CE0058;
+    }
+    
+    /* Expander with Rubine */
+    .streamlit-expanderHeader {
+        background: linear-gradient(90deg, #FFF5F9 0%, #FFFFFF 100%);
+        border-left: 3px solid #CE0058;
+    }
+    
+    /* Tab styling */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 8px;
+    }
+    
+    .stTabs [data-baseweb="tab"] {
+        background-color: #FFF5F9;
+        border-radius: 0.5rem 0.5rem 0 0;
+        color: #CE0058;
+        font-weight: 600;
+    }
+    
+    .stTabs [aria-selected="true"] {
+        background: linear-gradient(135deg, #CE0058 0%, #E91E7A 100%);
+        color: white;
     }
     </style>
 """, unsafe_allow_html=True)
 
-
-@st.cache_data
-def load_data(file_path):
-    """Load and cache the survey data."""
-    processor = DebriefDataProcessor(file_path)
-    processor.load_data()
-    return processor
-
+@st.cache_data(ttl=300)  # Cache for 5 minutes
+def load_data_from_sheets(sheet_url):
+    """Load and cache data from Google Sheets."""
+    try:
+        scope = ['https://spreadsheets.google.com/feeds',
+                'https://www.googleapis.com/auth/drive']
+        
+        credentials = ServiceAccountCredentials.from_json_keyfile_dict(
+            st.secrets["gcp_service_account"], scope
+        )
+        
+        client = gspread.authorize(credentials)
+        sheet = client.open_by_url(sheet_url)
+        
+        # Try common worksheet names
+        worksheet_names = ['Form_Responses', 'Form Responses 1', 'Sheet1', 'Form Responses']
+        worksheet = None
+        
+        for name in worksheet_names:
+            try:
+                worksheet = sheet.worksheet(name)
+                break
+            except:
+                continue
+        
+        if worksheet is None:
+            worksheet = sheet.get_worksheet(0)
+        
+        data = worksheet.get_all_records()
+        df = pd.DataFrame(data)
+        
+        if df.empty:
+            st.error("The Google Sheet appears to be empty.")
+            return None
+        
+        # Create processor with the data
+        processor = DebriefDataProcessor(None)
+        processor.df = df
+        processor.df.columns = processor.df.columns.str.strip()
+        
+        # Convert date columns
+        date_columns = ['Timestamp', 'Debrief Session Date']
+        for col in date_columns:
+            if col in processor.df.columns:
+                processor.df[col] = pd.to_datetime(processor.df[col], errors='coerce')
+        
+        # Extract unique partners
+        partner_col = 'Which partner program was this Debrief connected to?'
+        if partner_col in processor.df.columns:
+            processor.partners = sorted(processor.df[partner_col].dropna().unique().tolist())
+        
+        # Calculate date range
+        if 'Debrief Session Date' in processor.df.columns:
+            valid_dates = processor.df['Debrief Session Date'].dropna()
+            if len(valid_dates) > 0:
+                processor.date_range = (valid_dates.min(), valid_dates.max())
+        
+        return processor
+    except Exception as e:
+        st.error(f"Error loading from Google Sheets: {str(e)}")
+        st.info("Make sure you've shared the sheet with the service account and the URL is correct.")
+        return None
 
 def render_header():
-    """Render the dashboard header."""
+    """Render the dashboard header with BetterUp logo."""
     col1, col2 = st.columns([3, 1])
     
     with col1:
@@ -129,375 +242,364 @@ def render_header():
                    unsafe_allow_html=True)
         st.markdown('<div class="sub-header">Strategic Coach Intelligence • Organizational Insights • Executive Themes</div>', 
                    unsafe_allow_html=True)
-        st.caption("Created by Romina Labanca, Coach Community Associate | BetterUp")
+        st.markdown('<div class="creator-credit">Created by Romina Labanca, Coach Community Associate | BetterUp</div>', 
+                   unsafe_allow_html=True)
     
     with col2:
-        st.image("https://www.betterup.com/hubfs/BetterUp_PrimaryLogo_Teal_RGB-1.png", 
-                width=150)
+        # Display BetterUp logo
+        # Logo will be loaded from GitHub after you upload it there
+        try:
+            st.image("https://raw.githubusercontent.com/romi86/partner-debrief-dashboard/main/betterup_logo.png", 
+                    width=200)
+        except:
+            # Fallback to text if logo doesn't load
+            st.markdown("""
+                <div style="text-align: center; padding: 20px;">
+                    <div style="font-size: 2rem; font-weight: 700; 
+                         background: linear-gradient(135deg, #CE0058 0%, #FF6B35 100%);
+                         -webkit-background-clip: text; -webkit-text-fill-color: transparent;">
+                        BetterUp
+                    </div>
+                </div>
+            """, unsafe_allow_html=True)
 
-
-def render_overview_metrics(processor: DebriefDataProcessor):
-    """Render key overview metrics."""
-    st.markdown("### 📈 Strategic Intelligence Overview")
+def render_overview(processor, visualizer):
+    """Render the overview dashboard."""
+    st.markdown("## 📊 Executive Dashboard")
     
-    # Get overall metrics
-    metrics = processor.get_partner_metrics()
-    themes = processor.get_theme_analysis()
-    
-    # Create metric cards
+    # Key metrics with custom styling
     col1, col2, col3, col4 = st.columns(4)
     
     with col1:
-        st.metric(
-            label="Debrief Sessions",
-            value=metrics['unique_sessions'],
-            delta=None,
-            help="Total number of unique partner debrief sessions held"
-        )
+        st.metric("Total Debriefs", len(processor.df))
     
     with col2:
-        st.metric(
-            label="Coach Intelligence Inputs",
-            value=metrics['total_responses'],
-            delta=None,
-            help="Total coach contributions across all sessions"
-        )
+        st.metric("Active Partners", len(processor.partners) if processor.partners else 0)
     
     with col3:
-        pressure_count = len(themes.get('organizational_pressures', []))
-        st.metric(
-            label="Unique Pressures Identified",
-            value=pressure_count,
-            delta=None,
-            help="Distinct organizational pressures mentioned by coaches"
-        )
+        if processor.date_range:
+            days = (processor.date_range[1] - processor.date_range[0]).days
+            st.metric("Date Range", f"{days} days")
+        else:
+            st.metric("Date Range", "N/A")
     
     with col4:
-        challenge_count = len(themes.get('leadership_challenges', []))
-        st.metric(
-            label="Leadership Themes",
-            value=challenge_count,
-            delta=None,
-            help="Distinct leadership challenges identified"
-        )
+        coaches = processor.df['Coach ID'].nunique() if 'Coach ID' in processor.df.columns else 0
+        st.metric("Unique Coaches", coaches)
     
-    # Date range
-    if metrics['date_range'][0] != 'N/A':
-        st.caption(f"📅 Data Period: {metrics['date_range'][0]} to {metrics['date_range'][1]}")
+    st.markdown("---")
     
-    # Partners covered
-    st.caption(f"🤝 Partners: {', '.join(processor.partners)}")
+    # Visualizations
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown("### 📈 Partner Activity")
+        fig = visualizer.create_partner_activity_chart(processor.df)
+        st.plotly_chart(fig, use_container_width=True)
+    
+    with col2:
+        st.markdown("### 📅 Debrief Timeline")
+        fig = visualizer.create_timeline_chart(processor.df)
+        st.plotly_chart(fig, use_container_width=True)
+    
+    # Trends
+    st.markdown("### 🎯 Organizational Pressure Trends")
+    trends_data = processor.extract_theme_frequencies('organizational_pressures')
+    if trends_data:
+        fig = visualizer.create_trends_chart(trends_data)
+        st.plotly_chart(fig, use_container_width=True)
+    else:
+        st.info("No trend data available yet.")
 
-
-def render_partner_deep_dive(processor: DebriefDataProcessor, visualizer: DebriefVisualizer):
-    """Render detailed partner analysis."""
-    st.markdown("### 🔍 Partner Deep Dive")
+def render_partner_deep_dive(processor, visualizer, exporter):
+    """Render partner-specific analysis."""
+    st.markdown("## 🔍 Partner Deep Dive")
     
-    # Partner selection
+    if not processor.partners:
+        st.warning("No partners found in the data.")
+        return
+    
     selected_partner = st.selectbox(
-        "Select Partner Program",
+        "Select Partner",
         options=processor.partners,
-        key="partner_select"
+        help="Choose a partner to view detailed intelligence"
     )
     
     if selected_partner:
-        # Get partner data
-        metrics = processor.get_partner_metrics(selected_partner)
-        themes = processor.get_theme_analysis(selected_partner)
-        time_series = processor.get_time_series_data(selected_partner)
+        partner_data = processor.get_partner_data(selected_partner)
         
-        # Partner metrics
-        st.markdown(f"#### {selected_partner} - Intelligence Summary")
-        
-        col1, col2, col3, col4 = st.columns(4)
+        # Metrics
+        col1, col2, col3 = st.columns(3)
         
         with col1:
-            st.metric("Sessions", metrics['unique_sessions'], help="Unique debrief sessions for this partner")
+            st.metric("Debrief Sessions", len(partner_data))
+        
         with col2:
-            st.metric("Coach Inputs", metrics['total_responses'], help="Total coach intelligence contributions")
+            coaches = partner_data['Coach ID'].nunique() if 'Coach ID' in partner_data.columns else 0
+            st.metric("Coaches Engaged", coaches)
+        
         with col3:
-            pressure_count = len(themes.get('organizational_pressures', []))
-            st.metric("Pressures", pressure_count, help="Unique organizational pressures identified")
-        with col4:
-            challenge_count = len(themes.get('leadership_challenges', []))
-            st.metric("Challenges", challenge_count, help="Unique leadership challenges identified")
+            if 'Debrief Session Date' in partner_data.columns:
+                dates = pd.to_datetime(partner_data['Debrief Session Date'], errors='coerce').dropna()
+                if len(dates) > 0:
+                    last_date = dates.max().strftime('%Y-%m-%d')
+                    st.metric("Last Debrief", last_date)
         
-        # Visualizations
-        tab1, tab2, tab3 = st.tabs(["🎯 Organizational Pressures", "🚀 Leadership Challenges", "💬 All Insights"])
-        
-        with tab1:
-            st.markdown("##### What Executives Are Facing Right Now")
-            if 'organizational_pressures' in themes and themes['organizational_pressures']:
-                fig = visualizer.create_theme_distribution(
-                    themes['organizational_pressures'],
-                    "Top Organizational Pressures"
-                )
-                st.plotly_chart(fig, use_container_width=True)
-                
-                # Show top 5 in text
-                st.markdown("**Top 5 Pressures:**")
-                for i, (theme, count) in enumerate(themes['organizational_pressures'][:5], 1):
-                    st.write(f"{i}. **{theme}** — *mentioned {count} time(s)*")
-            else:
-                st.info("No organizational pressure data available for this partner.")
-        
-        with tab2:
-            st.markdown("##### Recurring Leadership Development Needs")
-            
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                if 'leadership_challenges' in themes and themes['leadership_challenges']:
-                    fig = visualizer.create_theme_distribution(
-                        themes['leadership_challenges'],
-                        "Leadership Challenges"
-                    )
-                    st.plotly_chart(fig, use_container_width=True)
-                else:
-                    st.info("No leadership challenge data available.")
-            
-            with col2:
-                if 'implementation_obstacles' in themes and themes['implementation_obstacles']:
-                    fig = visualizer.create_theme_distribution(
-                        themes['implementation_obstacles'],
-                        "Implementation Obstacles"
-                    )
-                    st.plotly_chart(fig, use_container_width=True)
-                else:
-                    st.info("No implementation obstacle data available.")
-        
-        with tab3:
-            insights = processor.get_qualitative_insights(selected_partner)
-            
-            if insights:
-                for category, responses in insights.items():
-                    if responses:
-                        st.markdown(f"**{category}**")
-                        
-                        # Display in expandable sections
-                        for i, response in enumerate(responses[:10], 1):
-                            with st.expander(f"Response {i}"):
-                                st.write(response)
-                        
-                        if len(responses) > 10:
-                            st.caption(f"Showing 10 of {len(responses)} responses")
-            else:
-                st.info("No qualitative insights available for this partner.")
-        
-        # Export button
         st.markdown("---")
-        if st.button(f"📥 Export {selected_partner} Report", key="export_partner"):
-            with st.spinner("Generating comprehensive report..."):
-                exporter = ReportExporter()
-                report_data = processor.export_partner_report_data(selected_partner)
-                
-                output_path = f"/mnt/user-data/outputs/{selected_partner.replace(' ', '_')}_Report_{datetime.now().strftime('%Y%m%d')}.xlsx"
-                exporter.export_partner_report_excel(report_data, output_path)
-                
-                st.success(f"✅ Report generated successfully!")
-                st.markdown(f"[View your report](computer://{output_path})")
-
-
-def render_partner_comparison(processor: DebriefDataProcessor, visualizer: DebriefVisualizer):
-    """Render cross-partner comparison."""
-    st.markdown("### 🏆 Cross-Partner Strategic Intelligence")
-    
-    st.markdown("""
-    Compare the strategic themes and patterns emerging across your partner portfolio. 
-    Identify which pressures and challenges are universal vs. partner-specific.
-    """)
-    
-    # Select metrics for comparison
-    available_metrics = ['avg_relevance', 'avg_support', 'avg_urgency', 'unique_sessions', 'total_responses']
-    
-    selected_metrics = st.multiselect(
-        "Select metrics to compare",
-        options=available_metrics,
-        default=['avg_relevance', 'avg_support', 'unique_sessions'],
-        format_func=lambda x: x.replace('avg_', '').replace('_', ' ').title()
-    )
-    
-    if selected_metrics:
-        # Get comparison data
-        comparison_df = processor.compare_partners(selected_metrics)
         
-        # Visualization tabs
-        tab1, tab2, tab3 = st.tabs(["📊 Bar Charts", "🔥 Heatmap", "📋 Data Table"])
-        
-        with tab1:
-            # Session volume
-            if 'unique_sessions' in selected_metrics:
-                fig = visualizer.create_session_volume_chart(comparison_df)
-                st.plotly_chart(fig, use_container_width=True)
-            
-            # Partner comparison
-            fig = visualizer.create_partner_comparison(comparison_df)
-            st.plotly_chart(fig, use_container_width=True)
-        
-        with tab2:
-            fig = visualizer.create_heatmap_comparison(comparison_df)
-            st.plotly_chart(fig, use_container_width=True)
-        
-        with tab3:
-            # Format the dataframe for display
-            display_df = comparison_df.copy()
-            
-            # Round numeric columns
-            for col in display_df.columns:
-                if col != 'Partner' and pd.api.types.is_numeric_dtype(display_df[col]):
-                    display_df[col] = display_df[col].round(2)
-            
-            st.dataframe(
-                display_df,
-                use_container_width=True,
-                hide_index=True
-            )
-        
-        # Export comparison report
-        st.markdown("---")
-        if st.button("📥 Export Comparison Report", key="export_comparison"):
-            with st.spinner("Generating comparison report..."):
-                exporter = ReportExporter()
-                
-                # Get themes for all partners
-                all_themes = {}
-                for partner in processor.partners:
-                    all_themes[partner] = processor.get_theme_analysis(partner)
-                
-                output_path = f"/mnt/user-data/outputs/Partner_Comparison_Report_{datetime.now().strftime('%Y%m%d')}.xlsx"
-                exporter.export_comparison_report_excel(comparison_df, all_themes, output_path)
-                
-                st.success("✅ Comparison report generated successfully!")
-                st.markdown(f"[View your report](computer://{output_path})")
-
-
-def render_insights_summary(processor: DebriefDataProcessor):
-    """Render AI-generated insights summary."""
-    st.markdown("### 🧠 Strategic Insights")
-    
-    # Overall themes across all partners
-    all_themes = processor.get_theme_analysis()
-    
-    if all_themes:
+        # Strategic Intelligence with insight cards
         col1, col2 = st.columns(2)
         
         with col1:
-            st.markdown("#### 🎯 Top Organizational Pressures")
-            if 'organizational_pressures' in all_themes and all_themes['organizational_pressures']:
-                for i, (theme, count) in enumerate(all_themes['organizational_pressures'][:5], 1):
-                    st.markdown(f"{i}. **{theme}** ({count} mentions)")
+            st.markdown("### 🎯 Organizational Pressures")
+            pressures = processor.extract_themes(partner_data, 'organizational_pressures')
+            if pressures:
+                for pressure in pressures[:5]:
+                    st.markdown(f'<div class="insight-card">• {pressure}</div>', unsafe_allow_html=True)
             else:
-                st.info("No data available")
+                st.info("No pressure data available.")
         
         with col2:
-            st.markdown("#### 🚀 Key Leadership Challenges")
-            if 'leadership_challenges' in all_themes and all_themes['leadership_challenges']:
-                for i, (theme, count) in enumerate(all_themes['leadership_challenges'][:5], 1):
-                    st.markdown(f"{i}. **{theme}** ({count} mentions)")
+            st.markdown("### 💡 Leadership Challenges")
+            challenges = processor.extract_themes(partner_data, 'leadership_challenges')
+            if challenges:
+                for challenge in challenges[:5]:
+                    st.markdown(f'<div class="insight-card">• {challenge}</div>', unsafe_allow_html=True)
             else:
-                st.info("No data available")
+                st.info("No challenge data available.")
         
+        # Export button
+        st.markdown("---")
+        if st.button("📥 Export Partner Report", key="export_partner"):
+            with st.spinner("Generating executive report..."):
+                report_data = processor.generate_partner_report(selected_partner)
+                excel_file = exporter.create_partner_report(report_data, selected_partner)
+                
+                with open(excel_file, 'rb') as f:
+                    st.download_button(
+                        label="⬇️ Download Excel Report",
+                        data=f.read(),
+                        file_name=f"{selected_partner}_Intelligence_Report.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        key="download_partner"
+                    )
+                
+                os.remove(excel_file)
+                st.success("✅ Report generated successfully!")
+
+def render_comparison(processor, visualizer, exporter):
+    """Render partner comparison view."""
+    st.markdown("## 🔄 Partner Comparison")
+    
+    if not processor.partners or len(processor.partners) < 2:
+        st.warning("Need at least 2 partners for comparison.")
+        return
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        partner1 = st.selectbox("Select First Partner", processor.partners, key="p1")
+    
+    with col2:
+        other_partners = [p for p in processor.partners if p != partner1]
+        partner2 = st.selectbox("Select Second Partner", other_partners, key="p2")
+    
+    if partner1 and partner2:
         st.markdown("---")
         
-        # Implementation obstacles
-        st.markdown("#### ⚠️ Common Implementation Obstacles")
-        if 'implementation_obstacles' in all_themes and all_themes['implementation_obstacles']:
-            obstacles_df = pd.DataFrame(
-                all_themes['implementation_obstacles'][:8],
-                columns=['Obstacle', 'Frequency']
-            )
-            st.dataframe(obstacles_df, use_container_width=True, hide_index=True)
-        else:
-            st.info("No data available")
+        # Comparison metrics
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.markdown(f"### {partner1}")
+            data1 = processor.get_partner_data(partner1)
+            st.metric("Debrief Sessions", len(data1))
+            st.metric("Unique Coaches", data1['Coach ID'].nunique() if 'Coach ID' in data1.columns else 0)
+        
+        with col2:
+            st.markdown(f"### {partner2}")
+            data2 = processor.get_partner_data(partner2)
+            st.metric("Debrief Sessions", len(data2))
+            st.metric("Unique Coaches", data2['Coach ID'].nunique() if 'Coach ID' in data2.columns else 0)
+        
+        # Comparison chart
+        st.markdown("### 📊 Organizational Pressures Comparison")
+        fig = visualizer.create_comparison_chart([partner1, partner2], processor)
+        st.plotly_chart(fig, use_container_width=True)
+        
+        # Export
+        if st.button("📥 Export Comparison Report", key="export_comparison"):
+            with st.spinner("Generating comparison report..."):
+                excel_file = exporter.create_comparison_report([partner1, partner2], processor)
+                
+                with open(excel_file, 'rb') as f:
+                    st.download_button(
+                        label="⬇️ Download Comparison Report",
+                        data=f.read(),
+                        file_name=f"Partner_Comparison_{partner1}_vs_{partner2}.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        key="download_comparison"
+                    )
+                
+                os.remove(excel_file)
+                st.success("✅ Comparison report generated successfully!")
 
+def render_strategic_insights(processor):
+    """Render strategic insights view."""
+    st.markdown("## 💡 Strategic Insights")
+    
+    # Cross-partner themes
+    st.markdown("### 🌐 Cross-Partner Intelligence")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown("#### Top Organizational Pressures")
+        all_pressures = processor.extract_theme_frequencies('organizational_pressures')
+        if all_pressures:
+            for theme, count in list(all_pressures.items())[:8]:
+                st.markdown(f"""
+                    <div class="insight-card">
+                        <strong>{theme}</strong><br/>
+                        <span style="color: #CE0058; font-weight: 600;">{count} mentions</span>
+                    </div>
+                """, unsafe_allow_html=True)
+        else:
+            st.info("No pressure data available.")
+    
+    with col2:
+        st.markdown("#### Top Leadership Challenges")
+        all_challenges = processor.extract_theme_frequencies('leadership_challenges')
+        if all_challenges:
+            for theme, count in list(all_challenges.items())[:8]:
+                st.markdown(f"""
+                    <div class="insight-card">
+                        <strong>{theme}</strong><br/>
+                        <span style="color: #CE0058; font-weight: 600;">{count} mentions</span>
+                    </div>
+                """, unsafe_allow_html=True)
+        else:
+            st.info("No challenge data available.")
+    
+    st.markdown("---")
+    
+    # Implementation obstacles
+    st.markdown("### 🚧 Implementation Obstacles")
+    obstacles = processor.extract_theme_frequencies('implementation_obstacles')
+    if obstacles:
+        for theme, count in list(obstacles.items())[:10]:
+            st.markdown(f"""
+                <div class="insight-card">
+                    <strong>{theme}</strong> 
+                    <span style="color: #CE0058; font-weight: 600;">({count} mentions)</span>
+                </div>
+            """, unsafe_allow_html=True)
+    else:
+        st.info("No obstacle data available.")
 
 def main():
-    """Main application function."""
+    """Main application logic."""
     render_header()
     
     # Sidebar
     with st.sidebar:
         st.markdown("## 📂 Data Source")
         
-        # File uploader
-        uploaded_file = st.file_uploader(
-            "Upload Survey Data",
-            type=['xlsx'],
-            help="Upload the Excel file containing survey responses"
+        # Google Sheets URL input
+        sheet_url = st.text_input(
+            "Google Sheet URL",
+            value="",
+            help="Paste the full URL of your Google Sheet with survey responses",
+            placeholder="https://docs.google.com/spreadsheets/d/..."
         )
         
-        # Use default file if none uploaded
-        file_path = "/home/claude/Debrief_Survey_Data.xlsx" if not uploaded_file else None
+        st.caption("📊 Data auto-refreshes every 5 minutes")
         
-        if uploaded_file:
-            # Save uploaded file
-            file_path = f"/home/claude/uploaded_data.xlsx"
-            with open(file_path, "wb") as f:
-                f.write(uploaded_file.read())
+        # Manual refresh button
+        if st.button("🔄 Refresh Data Now"):
+            st.cache_data.clear()
+            st.rerun()
         
         st.markdown("---")
         
         # Navigation
         st.markdown("## 🧭 Navigation")
-        view_mode = st.radio(
+        view = st.radio(
             "Select View",
-            options=[
-                "📈 Overview",
-                "🔍 Partner Deep Dive",
-                "🏆 Partner Comparison",
-                "🧠 Strategic Insights"
-            ]
+            ["📊 Overview", "🔍 Partner Deep Dive", "🔄 Partner Comparison", "💡 Strategic Insights"],
+            label_visibility="collapsed"
         )
         
         st.markdown("---")
         
-        # Info
-        st.markdown("## ℹ️ About")
-        st.info(
-            """
+        # About section
+        with st.expander("ℹ️ About"):
+            st.markdown("""
             **Partner Debrief Intelligence Dashboard**
             
-            Transform coach insights into strategic intelligence for partner 
-            conversations. This dashboard surfaces real-time organizational 
-            pressures, leadership themes, and implementation barriers from 
-            BetterUp's coach network.
+            Transform coach insights into strategic intelligence for partner conversations.
+            
+            **Created by:** Romina Labanca  
+            Coach Community Associate | BetterUp
+            
+            ---
+            
+            **This dashboard surfaces:**
+            - Organizational pressures executives are facing
+            - Leadership challenges emerging in coaching
+            - Implementation obstacles preventing progress
+            - Cross-partner trends and patterns
             
             **Core Intelligence:**
-            - Organizational pressures executives face
-            - Leadership development themes
-            - Implementation obstacles
-            - Cross-partner pattern recognition
-            """
-        )
+            - Real-time organizational pressure tracking
+            - Leadership theme analysis across sessions
+            - Implementation barrier identification
+            - Strategic pattern recognition
+            """)
     
     # Main content
-    if file_path and os.path.exists(file_path):
-        try:
-            # Load data
-            processor = load_data(file_path)
-            visualizer = DebriefVisualizer()
-            
-            # Render selected view
-            if view_mode == "📈 Overview":
-                render_overview_metrics(processor)
-                st.markdown("---")
-                render_insights_summary(processor)
-            
-            elif view_mode == "🔍 Partner Deep Dive":
-                render_partner_deep_dive(processor, visualizer)
-            
-            elif view_mode == "🏆 Partner Comparison":
-                render_partner_comparison(processor, visualizer)
-            
-            elif view_mode == "🧠 Strategic Insights":
-                render_insights_summary(processor)
+    if not sheet_url:
+        st.info("👆 Please enter your Google Sheet URL in the sidebar to begin.")
+        st.markdown("""
+        ### 🚀 Getting Started
         
-        except Exception as e:
-            st.error(f"Error loading data: {str(e)}")
-            st.exception(e)
-    else:
-        st.warning("⚠️ Please upload survey data to begin analysis.")
-
+        1. **Enter your Google Sheet URL** in the sidebar
+        2. **Ensure the sheet is shared** with the service account
+        3. **Data loads automatically** and refreshes every 5 minutes
+        
+        ---
+        
+        **Need help?** Contact Romina Labanca, Coach Community Associate
+        """)
+        st.stop()
+    
+    # Load data
+    with st.spinner("Loading intelligence from Google Sheets..."):
+        processor = load_data_from_sheets(sheet_url)
+    
+    if processor is None:
+        st.error("❌ Failed to load data. Please check your Google Sheet URL and permissions.")
+        st.info("""
+        **Troubleshooting:**
+        - Verify the sheet is shared with the service account
+        - Check that the URL is correct
+        - Ensure the sheet contains data
+        """)
+        st.stop()
+    
+    # Initialize visualizer and exporter
+    visualizer = DebriefVisualizer()
+    exporter = ReportExporter()
+    
+    # Render selected view
+    if view == "📊 Overview":
+        render_overview(processor, visualizer)
+    elif view == "🔍 Partner Deep Dive":
+        render_partner_deep_dive(processor, visualizer, exporter)
+    elif view == "🔄 Partner Comparison":
+        render_comparison(processor, visualizer, exporter)
+    elif view == "💡 Strategic Insights":
+        render_strategic_insights(processor)
 
 if __name__ == "__main__":
     main()
