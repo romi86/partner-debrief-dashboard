@@ -1,6 +1,7 @@
 """
 Partner Debrief Intelligence Dashboard - Data Processing Module
 BetterUp Executive Suite Coach Intelligence Platform
+Created by Romina Labanca
 """
 
 import pandas as pd
@@ -14,207 +15,232 @@ from collections import Counter
 class DebriefDataProcessor:
     """Processes and analyzes Partner Debrief survey data."""
     
+    # Column mapping - finds columns by various possible names
+    PARTNER_COL_NAMES = [
+        'Which partner program was this Debrief connected to?',
+        'Partner',
+        'Partner Program',
+        'Organization',
+        'Company'
+    ]
+    
+    DATE_COL_NAMES = [
+        'Debrief Session Date',
+        'Date',
+        'Session Date',
+        'Timestamp'
+    ]
+    
+    PRESSURE_COL_NAMES = [
+        'What single organizational pressure is most frequently mentioned by your executives right now?',
+        'Organizational Pressure',
+        'Organizational Pressures',
+        'Pressure'
+    ]
+    
+    CHALLENGE_COL_NAMES = [
+        'What leadership challenge or development need keeps coming up across multiple executive sessions?',
+        'Leadership Challenge',
+        'Leadership Challenges'
+    ]
+    
+    OBSTACLE_COL_NAMES = [
+        'What implementation obstacle or barrier to change do you see most consistently across your executive cohorts?',
+        'Implementation Obstacle',
+        'Implementation Obstacles',
+        'Obstacles'
+    ]
+    
     def __init__(self, excel_path: str):
         """Initialize with path to Excel file containing survey responses."""
         self.excel_path = excel_path
         self.df = None
         self.partners = []
         self.date_range = None
+        self.partner_col = None
+        self.date_col = None
+        self.pressure_col = None
+        self.challenge_col = None
+        self.obstacle_col = None
         
+    def _find_column(self, possible_names: List[str]) -> Optional[str]:
+        """Find column by trying multiple possible names."""
+        if self.df is None:
+            return None
+        
+        for name in possible_names:
+            # Try exact match
+            if name in self.df.columns:
+                return name
+            # Try case-insensitive partial match
+            for col in self.df.columns:
+                if name.lower() in str(col).lower():
+                    return col
+        return None
+    
     def load_data(self) -> pd.DataFrame:
         """Load and preprocess survey data from Excel."""
-        self.df = pd.read_excel(self.excel_path, sheet_name='Form_Responses')
+        if self.excel_path:
+            self.df = pd.read_excel(self.excel_path, sheet_name='Form_Responses')
         
+        if self.df is None:
+            return None
+            
         # Clean column names
         self.df.columns = self.df.columns.str.strip()
         
-        # Convert date columns
-        date_columns = ['Timestamp', 'Debrief Session Date']
-        for col in date_columns:
-            if col in self.df.columns:
-                self.df[col] = pd.to_datetime(self.df[col], errors='coerce')
+        # Find the correct columns
+        self.partner_col = self._find_column(self.PARTNER_COL_NAMES)
+        self.date_col = self._find_column(self.DATE_COL_NAMES)
+        self.pressure_col = self._find_column(self.PRESSURE_COL_NAMES)
+        self.challenge_col = self._find_column(self.CHALLENGE_COL_NAMES)
+        self.obstacle_col = self._find_column(self.OBSTACLE_COL_NAMES)
+        
+        # Convert date column
+        if self.date_col and self.date_col in self.df.columns:
+            self.df[self.date_col] = pd.to_datetime(self.df[self.date_col], errors='coerce')
         
         # Extract unique partners
-        if 'Which partner program was this Debrief connected to?' in self.df.columns:
-            self.partners = sorted(self.df['Which partner program was this Debrief connected to?'].dropna().unique().tolist())
+        if self.partner_col and self.partner_col in self.df.columns:
+            self.partners = sorted(self.df[self.partner_col].dropna().unique().tolist())
         
         # Calculate date range
-        if 'Debrief Session Date' in self.df.columns:
-            valid_dates = self.df['Debrief Session Date'].dropna()
+        if self.date_col and self.date_col in self.df.columns:
+            valid_dates = self.df[self.date_col].dropna()
             if len(valid_dates) > 0:
                 self.date_range = (valid_dates.min(), valid_dates.max())
         
         return self.df
     
     def get_session_count(self) -> int:
-        """Calculate total number of unique debrief sessions."""
-        if 'Debrief Session Date' not in self.df.columns:
+        """Calculate total number of debrief sessions (rows with valid date and partner)."""
+        if self.df is None:
             return 0
         
-        # Count unique combinations of date and partner
-        unique_sessions = self.df.groupby([
-            'Debrief Session Date', 
-            'Which partner program was this Debrief connected to?'
-        ]).size()
+        # Count rows that have both a partner and a date
+        valid_rows = self.df.copy()
         
-        return len(unique_sessions)
+        if self.partner_col:
+            valid_rows = valid_rows[valid_rows[self.partner_col].notna()]
+        
+        if self.date_col:
+            valid_rows = valid_rows[valid_rows[self.date_col].notna()]
+        
+        return len(valid_rows)
     
-    def get_partner_metrics(self, partner: Optional[str] = None) -> Dict:
-        """Calculate key metrics for a partner or all partners."""
-        df = self.df if partner is None else self.df[
-            self.df['Which partner program was this Debrief connected to?'] == partner
-        ]
+    def get_partner_data(self, partner_name: str) -> pd.DataFrame:
+        """Get all debrief data for a specific partner."""
+        if self.df is None or self.partner_col is None:
+            return pd.DataFrame()
         
-        metrics = {
-            'total_responses': len(df),
-            'unique_sessions': self._count_unique_sessions(df),
-            'avg_relevance': self._safe_mean(df, 'How relevant was today\'s discussion to your current executive coaching challenges?'),
-            'avg_support': self._safe_mean(df, 'How supported do you feel by BetterUp to show up fully in your executive coaching sessions?'),
-            'avg_urgency': self._safe_mean(df, 'How urgent is the primary pressure/challenge you discussed today?'),
-            'date_range': self._get_date_range(df)
+        return self.df[self.df[self.partner_col] == partner_name].copy()
+    
+    def extract_themes(self, data: pd.DataFrame, theme_type: str) -> List[str]:
+        """Extract themes of specified type from the data."""
+        column_map = {
+            'organizational_pressures': self.pressure_col,
+            'leadership_challenges': self.challenge_col,
+            'implementation_obstacles': self.obstacle_col
         }
         
-        return metrics
-    
-    def get_theme_analysis(self, partner: Optional[str] = None) -> Dict[str, List[Tuple[str, int]]]:
-        """Analyze themes from qualitative responses."""
-        df = self.df if partner is None else self.df[
-            self.df['Which partner program was this Debrief connected to?'] == partner
-        ]
+        col_name = column_map.get(theme_type)
+        if col_name is None or col_name not in data.columns:
+            return []
         
-        theme_columns = {
-            'organizational_pressures': 'What single organizational pressure is most frequently mentioned by your executives right now?',
-            'leadership_challenges': 'What leadership challenge or development need keeps coming up across multiple executive sessions?',
-            'implementation_obstacles': 'What\'s the biggest obstacle preventing your executives from implementing what they learn in coaching?',
-            'valuable_takeaways': 'What was the most valuable takeaway from today\'s session for your coaching practice?'
-        }
+        # Get non-null values
+        themes = data[col_name].dropna().tolist()
         
-        themes = {}
-        for key, column in theme_columns.items():
-            if column in df.columns:
-                themes[key] = self._extract_top_themes(df[column])
+        # Clean and deduplicate
+        themes = [str(t).strip() for t in themes if str(t).strip() and str(t).lower() != 'nan']
         
         return themes
     
-    def get_time_series_data(self, partner: Optional[str] = None) -> pd.DataFrame:
-        """Get time series data for trend analysis."""
-        df = self.df if partner is None else self.df[
-            self.df['Which partner program was this Debrief connected to?'] == partner
-        ]
+    def extract_theme_frequencies(self, theme_type: str) -> Dict[str, int]:
+        """Extract and count theme frequencies across all debriefs."""
+        if self.df is None:
+            return {}
         
-        if 'Debrief Session Date' not in df.columns:
-            return pd.DataFrame()
-        
-        # Group by session date and calculate metrics
-        time_series = df.groupby('Debrief Session Date').agg({
-            'How relevant was today\'s discussion to your current executive coaching challenges?': 'mean',
-            'How supported do you feel by BetterUp to show up fully in your executive coaching sessions?': 'mean',
-            'How urgent is the primary pressure/challenge you discussed today?': 'mean',
-            'Coach ID': 'count'
-        }).reset_index()
-        
-        time_series.columns = ['Date', 'Relevance', 'Support', 'Urgency', 'Response_Count']
-        time_series = time_series.sort_values('Date')
-        
-        return time_series
+        themes = self.extract_themes(self.df, theme_type)
+        return dict(Counter(themes).most_common())
     
-    def compare_partners(self, metrics: List[str]) -> pd.DataFrame:
-        """Compare metrics across all partners."""
-        comparison_data = []
+    def generate_partner_report(self, partner_name: str) -> Dict:
+        """Generate comprehensive intelligence report for a partner."""
+        partner_data = self.get_partner_data(partner_name)
         
-        for partner in self.partners:
-            partner_metrics = self.get_partner_metrics(partner)
-            row = {'Partner': partner}
-            
-            for metric in metrics:
-                if metric in partner_metrics:
-                    row[metric] = partner_metrics[metric]
-            
-            comparison_data.append(row)
+        if partner_data.empty:
+            return {
+                'partner_name': partner_name,
+                'session_count': 0,
+                'date_range': None,
+                'organizational_pressures': [],
+                'leadership_challenges': [],
+                'implementation_obstacles': [],
+                'metrics': {}
+            }
         
-        return pd.DataFrame(comparison_data)
-    
-    def get_qualitative_insights(self, partner: Optional[str] = None) -> Dict[str, List[str]]:
-        """Extract qualitative insights and quotes."""
-        df = self.df if partner is None else self.df[
-            self.df['Which partner program was this Debrief connected to?'] == partner
-        ]
+        # Extract dates
+        dates = []
+        if self.date_col and self.date_col in partner_data.columns:
+            dates = pd.to_datetime(partner_data[self.date_col], errors='coerce').dropna()
         
-        insights = {}
+        date_range = None
+        if len(dates) > 0:
+            date_range = (dates.min(), dates.max())
         
-        # Key insights columns
-        insight_columns = [
-            'Is there anything you didn\'t get to share in today\'s session that feels important for the group or BetterUp to know?',
-            'What was the most valuable takeaway from today\'s session for your coaching practice?',
-            'What barriers are you seeing that make it harder for executives to apply what they\'re learning?'
-        ]
+        # Count unique coaches
+        coach_count = 0
+        coach_cols = ['Coach ID', 'BetterUp Email (optional)', 'Coach']
+        for col in coach_cols:
+            if col in partner_data.columns:
+                coach_count = partner_data[col].nunique()
+                break
         
-        for col in insight_columns:
-            if col in df.columns:
-                # Filter out empty responses and convert to string
-                responses = df[col].dropna().astype(str)
-                responses = responses[responses.str.strip() != '']
-                responses = responses[responses.str.lower() != 'nan']
-                insights[col] = responses.tolist()
-        
-        return insights
-    
-    def _count_unique_sessions(self, df: pd.DataFrame) -> int:
-        """Count unique debrief sessions."""
-        if 'Debrief Session Date' not in df.columns:
-            return 0
-        
-        unique_sessions = df.groupby([
-            'Debrief Session Date'
-        ]).size()
-        
-        return len(unique_sessions)
-    
-    def _safe_mean(self, df: pd.DataFrame, column: str) -> float:
-        """Safely calculate mean, handling missing values."""
-        if column not in df.columns:
-            return 0.0
-        
-        values = pd.to_numeric(df[column], errors='coerce')
-        return values.mean() if len(values) > 0 else 0.0
-    
-    def _get_date_range(self, df: pd.DataFrame) -> Tuple[str, str]:
-        """Get date range for the dataframe."""
-        if 'Debrief Session Date' not in df.columns:
-            return ('N/A', 'N/A')
-        
-        valid_dates = df['Debrief Session Date'].dropna()
-        if len(valid_dates) == 0:
-            return ('N/A', 'N/A')
-        
-        min_date = valid_dates.min().strftime('%Y-%m-%d')
-        max_date = valid_dates.max().strftime('%Y-%m-%d')
-        
-        return (min_date, max_date)
-    
-    def _extract_top_themes(self, series: pd.Series, top_n: int = 10) -> List[Tuple[str, int]]:
-        """Extract and count top themes from text responses."""
-        # Clean and filter responses
-        responses = series.dropna()
-        responses = responses[responses.str.strip() != '']
-        
-        # Count occurrences
-        theme_counts = Counter(responses)
-        
-        # Return top themes
-        return theme_counts.most_common(top_n)
-    
-    def export_partner_report_data(self, partner: str) -> Dict:
-        """Export comprehensive data for a partner report."""
-        partner_df = self.df[self.df['Which partner program was this Debrief connected to?'] == partner]
-        
-        report_data = {
-            'partner_name': partner,
-            'metrics': self.get_partner_metrics(partner),
-            'themes': self.get_theme_analysis(partner),
-            'time_series': self.get_time_series_data(partner),
-            'qualitative_insights': self.get_qualitative_insights(partner),
-            'session_details': partner_df.to_dict('records')
+        return {
+            'partner_name': partner_name,
+            'session_count': len(partner_data),
+            'date_range': date_range,
+            'organizational_pressures': self.extract_themes(partner_data, 'organizational_pressures'),
+            'leadership_challenges': self.extract_themes(partner_data, 'leadership_challenges'),
+            'implementation_obstacles': self.extract_themes(partner_data, 'implementation_obstacles'),
+            'metrics': {
+                'total_sessions': len(partner_data),
+                'unique_coaches': coach_count,
+                'date_range_days': (date_range[1] - date_range[0]).days if date_range else 0
+            }
         }
+    
+    def get_partner_comparison_data(self, partner_names: List[str]) -> Dict:
+        """Get comparison data for multiple partners."""
+        comparison_data = {}
         
-        return report_data
+        for partner in partner_names:
+            partner_data = self.get_partner_data(partner)
+            comparison_data[partner] = {
+                'session_count': len(partner_data),
+                'pressures': self.extract_themes(partner_data, 'organizational_pressures'),
+                'challenges': self.extract_themes(partner_data, 'leadership_challenges'),
+                'obstacles': self.extract_themes(partner_data, 'implementation_obstacles')
+            }
+        
+        return comparison_data
+    
+    def get_summary_stats(self) -> Dict:
+        """Get summary statistics across all debriefs."""
+        if self.df is None:
+            return {}
+        
+        # Count unique coaches
+        coach_count = 0
+        coach_cols = ['Coach ID', 'BetterUp Email (optional)', 'Coach']
+        for col in coach_cols:
+            if col in self.df.columns:
+                coach_count = self.df[col].nunique()
+                break
+        
+        return {
+            'total_sessions': self.get_session_count(),
+            'unique_partners': len(self.partners),
+            'unique_coaches': coach_count,
+            'date_range': self.date_range,
+            'date_range_days': (self.date_range[1] - self.date_range[0]).days if self.date_range else 0
+        }
